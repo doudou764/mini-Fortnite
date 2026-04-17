@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>V3 PRO BATTLE ROYALE</title>
+<style>
+body{margin:0;overflow:hidden;background:#87ceeb}
+#hud{
+position:fixed;top:10px;left:10px;
+color:#fff;background:rgba(0,0,0,.5);
+padding:10px;font-family:Arial;
+}
+</style>
+</head>
+<body>
+<div id="hud">V3 PRO | WASD move | click shoot | E loot | F build</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script>
+
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
+const renderer=new THREE.WebGLRenderer();
+renderer.setSize(innerWidth,innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// ground
+const ground=new THREE.Mesh(
+new THREE.PlaneGeometry(200,200),
+new THREE.MeshBasicMaterial({color:0x3cb043})
+);
+ground.rotation.x=-Math.PI/2;
+scene.add(ground);
+
+// NETWORK
+let myId=null;
+let players={}, bullets=[], loot=[];
+
+const ws=new WebSocket("ws://localhost:3000");
+
+ws.onmessage=(msg)=>{
+const data=JSON.parse(msg.data);
+
+if(data.type==="init") myId=data.id;
+
+if(data.type==="state"){
+players=data.players;
+bullets=data.bullets;
+loot=data.loot;
+}
+};
+
+// render players
+const meshes={};
+
+function getMesh(id){
+if(!meshes[id]){
+meshes[id]=new THREE.Mesh(
+new THREE.BoxGeometry(1,1.6,1),
+new THREE.MeshBasicMaterial({color:Math.random()*0xffffff})
+);
+scene.add(meshes[id]);
+}
+return meshes[id];
+}
+
+// controls
+const keys={};
+document.addEventListener("keydown",e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener("keyup",e=>keys[e.key.toLowerCase()]=false);
+
+let x=0,z=0;
+
+// SHOOT
+document.addEventListener("click",()=>{
+ws.send(JSON.stringify({
+type:"shoot",
+dx:0.2,
+dz:0
+}));
+});
+
+// BUILD
+document.addEventListener("keydown",e=>{
+if(e.key.toLowerCase()==="f"){
+ws.send(JSON.stringify({
+type:"build",
+dx:1,
+dz:0
+}));
+}
+});
+
+// LOOT
+document.addEventListener("keydown",e=>{
+if(e.key.toLowerCase()==="e"){
+for(let l of loot){
+if(Math.hypot(l.x-x,l.z-z)<3){
+ws.send(JSON.stringify({type:"loot",id:l.id}));
+}
+}
+}
+});
+
+// LOOP
+function animate(){
+requestAnimationFrame(animate);
+
+// move
+if(keys["w"]) z-=0.2;
+if(keys["s"]) z+=0.2;
+if(keys["a"]) x-=0.2;
+if(keys["d"]) x+=0.2;
+
+// send movement
+if(ws.readyState===1){
+ws.send(JSON.stringify({type:"move",x,z}));
+}
+
+// render players
+for(let id in players){
+const m=getMesh(id);
+m.position.x=players[id].x;
+m.position.z=players[id].z;
+}
+
+// render loot
+loot.forEach(l=>{
+const m=getMesh("loot"+l.id);
+m.position.set(l.x,0.5,l.z);
+});
+
+// camera
+camera.position.set(x,5,z+8);
+camera.lookAt(x,0,z);
+
+renderer.render(scene,camera);
+}
+animate();
+
+</script>
+</body>
+</html>
